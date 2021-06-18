@@ -3,10 +3,13 @@ from Products.PythonScripts.standard import html_quote
 request = container.REQUEST
 RESPONSE =  request.RESPONSE
 
-# Данные д-та
+# Данны
 doc = context.GetAnyTableAutokeySQL(tablename=doc_type, autokey=doc_autokey)[0]
+order_rec=context.logic.get_order_rec(doc_id=doc_autokey,doc_type=doc_type)
 # Продавец
-comprec = context.logic.set_company_rec_for_doc(doc)
+#comprec = context.logic.set_company_rec_for_doc(doc)
+comprec = context.GetAnyTableAutokeySQL(tablename='companies', autokey=doc['company'])[0]
+
 # Покупатель
 contrrec = context.GetAnyTableAutokeySQL(tablename='contragents',autokey=doc.contr).dictionaries()[0]
 # Грузополучатель
@@ -16,12 +19,14 @@ docitemssql = context.sql_main.doc_items(doc_id=doc_autokey,doc_type=doc_type,bu
 # Обработанный список товаров
 docitems = context.logic.doc_items_calc(docitems=docitemssql)
 
+
+
 # Обработка товаров
 
 def quoting(massive, exceptions=[]):
     for i in massive:
-        if i not in exceptions:
-            massive[i] = str(massive[i]).replace('"', '&quot;')
+        if '"' in str(massive[i]) and i not in exceptions:
+            massive[i] = massive[i].replace('"', '&quot;')
     return massive
 
 products_text = ''
@@ -52,7 +57,7 @@ for i in range(len(docitems[0])):
 				<СумНал>
 					<СумНал>%(product_nds_row)s</СумНал>
 				</СумНал>
-				<ДопСведТов НаимЕдИзм="шт"/>
+				<ДопСведТов ПрТовРаб="1" НаимЕдИзм="шт"/>
 			</СведТов>''' % docitems_dict
 
 doc_sum_dict = {'doc_sum_wo_nds': round(doc_sum_wo_nds, 2),
@@ -69,47 +74,82 @@ if len(docitems[0]) > 0:
 
 # Дата
 
-docdate = str(doc["docdate"]).split('/')
-docdate[0], docdate[2] = docdate[2], docdate[0]
-docdate = '.'.join(docdate)
-if len(comprec['head_name'].split()) == 3:
-    head_surname_prod, head_name_prod, head_patronymic_prod = comprec['head_name'].split()
-else:
-    head_surname_prod = head_name_prod = head_patronymic_prod = ''
+
+docdate = context.GetShortRusDate(doc["docdate"], fmt='yyyy')
+docdate_for_fname = docdate[6:] + docdate[3:5] + docdate[0:2]
+
 head_post_prod = comprec['head_post']
+head_name_full = comprec['head_name_full'] or comprec['head_name']
+
+if len(head_name_full.split()) == 3:
+  head_name_prod = head_name_full.split()[1]
+  head_surname_prod = head_name_full.split()[0]
+  head_patronymic_prod = head_name_full.split()[2]
+else:
+  head_name_prod = ''
+  head_surname_prod = head_name_full
+  head_patronymic_prod = ''
+
 inn_prod = comprec['inn']
 inn_pok = contrrec['inn']
 kpp_prod = comprec['kpp']
 kpp_pok = contrrec['kpp']
-okpo_prod = comprec['okpo']
-okpo_pok = contrrec['okpo']
-full_name_org_prod = comprec['name_full']
-full_name_org_pok = contrrec['name_full']
+okpo_prod = comprec['okpo'] or ''
+okpo_pok = contrrec['okpo'] or ''
+full_name_org_prod = comprec['name_full'] or comprec['name']
+full_name_org_pok = contrrec['name_full'] or contrrec['name']
 name_org_prod = comprec['name']
 name_org_pok = contrrec['name']
-phone_prod = comprec['phone']
-phone_pok = contrrec['phone']
+phone_prod = comprec['phone'] or ''
+phone_pok = contrrec['phone'] or ''
+
+
+doc_uid = hex(doc['autokey'])[2:].zfill(12).upper()
 
 doc_dict = {'doc_date': docdate,
+            'docnumber': doc['docnumber'],
             'doc_products_text': products_text,
             'inn_prod': inn_prod,
             'kpp_prod': kpp_prod,
             'okpo_prod': okpo_prod,
             'time_now': time_now,
             'date_now': date_now,
-            'full_name_org_prod': full_name_org_prod,
+            'full_name_org_prod': full_name_org_prod or name_org_prod,
             'name_org_prod': name_org_prod,
+            'address_prod': comprec['ur_address'],
+            'ur_address_index_prod': comprec['ur_address_index'] or '',
+            'ur_address_region_code_prod': comprec['ur_address_region_code'] or '',
+            'ur_address_city_prod': comprec['ur_address_city'] or '',
+            'ur_address_street_prod': comprec['ur_address_street'] or '',
+            'ur_address_house_prod': comprec['ur_address_house'] or '',
+            'ur_address_office_prod': comprec['ur_address_office'] or '',
+
+            'address_pok': contrrec['ur_address'] or '',
+            'ur_address_index_pok': contrrec['ur_address_index'] or '',
+            'ur_address_region_code_pok': contrrec['ur_address_region_code'] or '',
+            'ur_address_city_pok': contrrec['ur_address_city'] or '',
+            'ur_address_street_pok': contrrec['ur_address_street'] or '',
+            'ur_address_house_pok': contrrec['ur_address_house'] or '',
+            'ur_address_office_pok': contrrec['ur_address_office'] or '',
+
             'phone_prod': phone_prod,
             'inn_pok': inn_pok,
             'kpp_pok': kpp_pok,
             'okpo_pok': okpo_pok,
-            'full_name_org_pok': full_name_org_pok,
+            'full_name_org_pok': full_name_org_pok or name_org_pok,
             'name_org_pok': name_org_pok,
             'phone_pok': phone_pok,
             'head_patronymic_prod': head_patronymic_prod,
             'head_post_prod': head_post_prod,
             'head_name_prod': head_name_prod,
-            'head_surname_prod': head_surname_prod}
+            'head_surname_prod': head_surname_prod,
+
+            'doc_uid': doc_uid,
+            'docdate_for_fname': docdate_for_fname,
+
+            'base_doc_number': order_rec['docnumber'],
+            'base_doc_date': context.GetShortRusDate(order_rec['docdate'], fmt='yyyy'),
+}
 
 doc_dict = quoting(doc_dict, exceptions=['doc_products_text'])
 
@@ -120,31 +160,37 @@ if xml_type == 'SCHET12':
 elif xml_type == 'UPD':
     doc_dict['sv_prod_per'] = """		<СвПродПер>
 			<СвПер СодОпер="Товары переданы" ДатаПер="%(doc_date)s">
-				<ОснПер НаимОсн="Договор"/>
+				<ОснПер НаимОсн="Счет" НомОсн="%(base_doc_number)s" ДатаОсн="%(base_doc_date)s" ДопСвОсн=""/>
 				<СвЛицПер>
 					<РабОргПрод Должность="%(head_post_prod)s" ОснПолн="Должностные обязанности">
 						<ФИО Фамилия="%(head_surname_prod)s" Имя="%(head_name_prod)s" Отчество="%(head_patronymic_prod)s"/>
 					</РабОргПрод>
 				</СвЛицПер>
-				<ТранГруз СвТранГруз="Транспортная накладная">
-					<ТранНакл НомТранНакл="120" ДатаТранНакл="%(doc_date)s"/>
-				</ТранГруз>
+
 			</СвПер>
 		</СвПродПер>""" % doc_dict
     doc_dict['name_func'] = 'СЧФДОП'
 
+
+#				<ТранГруз СвТранГруз="Транспортная накладная">
+#					<ТранНакл НомТранНакл="120" ДатаТранНакл="%(doc_date)s"/>
+#				</ТранГруз>
+
+fname = 'ON_NSCHFDOPPR_%(inn_pok)s-%(kpp_pok)s_%(inn_prod)s-%(kpp_prod)s_%(docdate_for_fname)s_1BAFD6E5-9CFF-4C74-82A0-%(doc_uid)s' % doc_dict
+doc_dict['fname'] = fname
+
 print ("""<?xml version="1.0" encoding="utf-8"?>
-<Файл ИдФайл="ON_NSCHFDOPPR_7711000008-771100001_7710000000-771001001_20200729_1BAFD6E5-9CFF-4C74-82A0-3864F3AFF475" ВерсПрог="Rusa4ok007" ВерсФорм="5.01">\n
+<Файл ИдФайл="%(fname)s" ВерсПрог="русачок007" ВерсФорм="5.01">\n
 	<СвУчДокОбор ИдОтпр="%(inn_prod)s-%(kpp_prod)s" ИдПол="%(inn_pok)s-%(kpp_pok)s">
 	</СвУчДокОбор>
 	<Документ КНД="1115131" Функция="%(name_func)s" ДатаИнфПр="%(date_now)s" ВремИнфПр="%(time_now)s" НаимЭконСубСост="%(full_name_org_prod)s">
-		<СвСчФакт НомерСчФ="1" ДатаСчФ="%(doc_date)s" КодОКВ="643">
+		<СвСчФакт НомерСчФ="%(docnumber)s" ДатаСчФ="%(doc_date)s" КодОКВ="643">
 			<СвПрод ОКПО="%(okpo_prod)s" КраткНазв="%(name_org_prod)s">
 				<ИдСв>
 					<СвЮЛУч НаимОрг="%(full_name_org_prod)s" ИННЮЛ="%(inn_prod)s" КПП="%(kpp_prod)s"/>
 				</ИдСв>
 				<Адрес>
-					<АдрРФ Индекс="123310" КодРегион="77" Город="Москва" Улица="Березовая" Дом="10"/>
+					<АдрРФ Индекс="%(ur_address_index_prod)s" КодРегион="%(ur_address_region_code_prod)s" Город="%(ur_address_city_prod)s" Улица="%(ur_address_street_prod)s" Дом="%(ur_address_house_prod)s"/>
 				</Адрес>
 				<Контакт Тлф="%(phone_prod)s"/>
 			</СвПрод>
@@ -156,7 +202,7 @@ print ("""<?xml version="1.0" encoding="utf-8"?>
 					<СвЮЛУч НаимОрг="%(full_name_org_pok)s" ИННЮЛ="%(inn_pok)s" КПП="%(kpp_pok)s"/>
 				</ИдСв>
 				<Адрес>
-					<АдрРФ КодРегион="61" Город="Ростов-на-Дону" Улица="Петрова" Дом="1"/>
+					<АдрРФ Индекс="%(ur_address_index_pok)s" КодРегион="%(ur_address_region_code_pok)s" Город="%(ur_address_city_pok)s" Улица="%(ur_address_street_pok)s" Дом="%(ur_address_house_pok)s"/>
 				</Адрес>
 				<Контакт Тлф="%(phone_pok)s"/>
 			</ГрузПолуч>
@@ -165,7 +211,7 @@ print ("""<?xml version="1.0" encoding="utf-8"?>
 					<СвЮЛУч НаимОрг="%(full_name_org_pok)s" ИННЮЛ="%(inn_pok)s" КПП="%(kpp_pok)s"/>
 				</ИдСв>
 				<Адрес>
-					<АдрРФ КодРегион="61" Город="Ростов-на-Дону" Улица="Петрова" Дом="1"/>
+					<АдрРФ Индекс="%(ur_address_index_pok)s" КодРегион="%(ur_address_region_code_pok)s" Город="%(ur_address_city_pok)s" Улица="%(ur_address_street_pok)s" Дом="%(ur_address_house_pok)s"/>
 				</Адрес>
 				<Контакт Тлф="%(phone_pok)s"/>
 			</СвПокуп>
@@ -183,9 +229,8 @@ print ("""<?xml version="1.0" encoding="utf-8"?>
 
 
 
-""" % doc_dict)  #.encode("windows-1251")
+""" % doc_dict) #.encode("windows-1251")
 
-fname = 'schet_factura_test'
 RESPONSE.setHeader( "Content-Disposition", "attachment;filename=%s.xml" % fname)
 #RESPONSE.setHeader('Content-Type','application/xml')
 
